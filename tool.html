@@ -1,0 +1,15 @@
+<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>مرصاد الخصوصية</title>
+<link rel="icon" href="logo.svg"><link rel="stylesheet" href="style.css">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Reem+Kufi:wght@500;700&display=swap" rel="stylesheet"></head><body>
+<nav><div class="wrap in"><a class="brand" href="index.html"><img src="logo.svg" alt="">مرصاد</a><div class="links"><a href="index.html" class="">الرئيسية</a><a href="how.html" class="">كيف يعمل</a><a href="tool.html" class="on">جرّب الأداة</a><a href="about.html" class="">عن المشروع</a></div><a class="btn p" href="tool.html" style="padding:9px 22px">ابدأ الفحص</a><div class="menu">&#9776;</div></div></nav>
+<header class="hero" style="padding-bottom:36px"><div class="wrap"><div class="sh" style="margin:0 auto"><span class="pill">جرّب الأداة</span><h1 style="font-size:44px">افحص صورتك الآن</h1><p class="lead" style="margin:auto">تُعالج الصورة داخل متصفحك. جرّب بصورة نموذجية أو ارفع صورتك.</p></div></div></header>
+<section style="padding-top:6px"><div class="wrap" style="max-width:860px">
+<div class="key"><span>مفتاح Gemini</span><input id="key" type="password" placeholder="الصق المفتاح هنا" autocomplete="off"><button id="savekey" class="btn s" type="button" style="padding:8px 20px">حفظ</button></div>
+<div class="keyhint"><span id="keystate">اختياري: يفعّل فحص الذكاء الاصطناعي. يُحفظ في هذه الجلسة فقط.</span> · <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--dark2)">إعدادات متقدمة</summary><div class="key" style="margin-top:8px"><span>اسم النموذج</span><input id="model" type="text" dir="ltr"></div></details></div>
+<label class="drop" id="drop" for="file"><div class="ic" style="margin:0 auto 6px;width:64px;height:64px"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></div><h3>اسحب الصورة هنا أو اضغط للاختيار</h3><p>JPG أو PNG</p><input id="file" type="file" accept="image/jpeg,image/png" hidden></label>
+<div class="samples-h">أو جرّب صورة نموذجية (بيانات وهمية):</div><div id="samples" class="samples"></div>
+<div id="results" hidden></div>
+<p class="note">عند تفعيل الذكاء الاصطناعي تُرسل نسخة مصغّرة من الصورة إلى Gemini لتحليلها. لا نحفظ أي صورة على أي خادم. جرّب بصور لا تحتوي بيانات شخصية حقيقية.</p>
+</div></section>
+<script src="samples.js"></script><script src="app.js"></script>
+<footer><div class="wrap in"><div><a class="brand" href="index.html"><img src="logo.svg" alt="">مرصاد الخصوصية</a><small>نرصد اللي تكشفه صورك قبل الغريب. لا تُحفظ أي صورة، ويُنصح بتجربة الأداة على صور تجريبية فقط. استُخدم الذكاء الاصطناعي (Gemini وAntigravity) في بناء الأداة.</small></div><small style="text-align:left">مشروع ضمن برنامج رُبّان<br>الكلية التقنية للاتصالات والمعلومات بجدة<br>مسار الحوسبة والأمن السيبراني</small></div></footer></body></html>
