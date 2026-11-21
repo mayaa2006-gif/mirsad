@@ -186,6 +186,6 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
       box.appendChild(b);
     });
   }
-  window.Mirsad = { readExif, techFindings, run };
+  window.Mirsad = { readExif, techFindings, run, analyze, getKey };
   document.addEventListener('DOMContentLoaded', init);
 })();
