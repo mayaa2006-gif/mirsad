@@ -31,39 +31,59 @@
     $('#info').innerHTML = `✔ ${files.length} صورة اختبار جاهزة (بيانات وهمية معروفة مسبقًا).`; $('#start').disabled = false; render();
   });
 
-  async function one(f) {
+  const STORE = 'mirsad_eval_v1';
+  const loadStore = () => { try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) { return {}; } };
+  const saveStore = () => { try { const o = {}; files.forEach((f) => { if (res[f.name] && res[f.name].ai) o[f.name] = [...res[f.name].ai]; }); localStorage.setItem(STORE, JSON.stringify(o)); } catch (e) {} };
+  async function entry(f, ai, err) {
     const real = new Set((truth[f.name] || []).filter((c) => GT.includes(c)));
     const ex = window.Mirsad.readExif(await f.arrayBuffer());
-    const tech = new Set(ex.gps ? ['gps_location'] : []);
+    return { real, tech: new Set(ex.gps ? ['gps_location'] : []), ai, err: err || '' };
+  }
+
+  async function one(f) {
+    let { real, tech } = await entry(f, null);
     let ai = null, err = '';
-    for (let a = 0; a < 4; a++) {
+    let quota = false;
+    for (let a = 0; a < 3; a++) {
       try {
         const r = await window.Mirsad.analyze(await loadImg(f), window.Mirsad.getKey());
-        ai = new Set(r.items.map((i) => i.category).filter((c) => GT.includes(c))); err = ''; break;
+        ai = new Set(r.items.map((i) => i.category).filter((c) => GT.includes(c))); err = ''; quota = false; break;
       } catch (e) {
         err = String(e.message || e);
-        if (!/429|quota|rate|exhaust|retry|overload|unavailable|503/i.test(err)) break;   // خطأ دائم: لا فائدة من الإعادة
-        const m = err.match(/retry in ([\d.]+)s/i);
-        $('#prog').textContent = `حد الطلبات: ننتظر قليلًا ثم نعيد المحاولة (${f.name})...`;
-        await sleep(Math.min(70000, m ? (parseFloat(m[1]) + 2) * 1000 : 20000));
+        quota = /quota|429|exhaust|rate limit/i.test(err);
+        const transient = quota || /overload|unavailable|503|retry/i.test(err);
+        if (!transient) break;
+        const m = err.match(/retry in ([\d.]+)\s*(s|m|h)?/i);
+        let wait = m ? parseFloat(m[1]) * ({ s: 1, m: 60, h: 3600 }[(m[2] || 's').toLowerCase()]) : 20;
+        if (/per ?day|daily/i.test(err) || wait > 90) { break; }       // حد يومي: لا فائدة من الانتظار
+        $('#prog').textContent = `حد الطلبات في الدقيقة: ننتظر ${Math.ceil(wait + 2)} ثانية ثم نعيد المحاولة (${f.name})...`;
+        await sleep((wait + 2) * 1000);
       }
     }
-    res[f.name] = { real, tech, ai, err };
-    render();
+    res[f.name] = { real, tech, ai, err, quota };
+    saveStore(); render();
+    return quota;
   }
 
   async function runPending() {
     if (busy) return;
     if (!window.Mirsad.getKey()) { $('#info').innerHTML = '<span style="color:var(--bad)">أدخلي مفتاح Gemini في صفحة «جرّب الأداة» أولًا ثم ارجعي هنا.</span>'; return; }
     busy = true; $('#start').disabled = true; $('#retry').hidden = true;
+    const stored = loadStore();
+    for (const f of files) { if (stored[f.name] && !(res[f.name] && res[f.name].ai)) res[f.name] = await entry(f, new Set(stored[f.name])); }
+    render();
     const todo = files.filter((f) => !res[f.name] || !res[f.name].ai);
+    let hits = 0, stopped = false;
     for (let n = 0; n < todo.length; n++) {
       $('#bar').style.width = (n / todo.length * 100) + '%'; $('#prog').textContent = `جارٍ فحص ${n + 1} من ${todo.length}...`;
-      await one(todo[n]); await sleep(GAP);
+      const q = await one(todo[n]);
+      hits = q ? hits + 1 : 0;
+      if (hits >= 2) { stopped = true; break; }
+      await sleep(GAP);
     }
     $('#bar').style.width = '100%'; busy = false; $('#start').disabled = false;
     const failed = files.filter((f) => res[f.name] && !res[f.name].ai).length;
-    $('#prog').textContent = failed ? `انتهت الجولة، وتعذر تحليل ${failed} صورة.` : 'اكتمل القياس بنجاح';
+    $('#prog').textContent = stopped ? 'توقفنا لأن حد الطلبات المجاني وصل. النتائج الناجحة محفوظة، غيّري النموذج أو المفتاح (فوق) ثم اضغطي «إعادة المحاولة» وتكمل من حيث وقفت.' : (failed ? `انتهت الجولة، وتعذر تحليل ${failed} صورة.` : 'اكتمل القياس بنجاح');
     $('#retry').hidden = !failed; $('#retry').textContent = `إعادة محاولة الصور الفاشلة (${failed})`;
     $('#csv').hidden = false; render();
   }
@@ -72,7 +92,7 @@
     $('#table tbody').innerHTML = files.map((f) => {
       const r = res[f.name]; if (!r) return `<tr><td>${esc(f.name)}</td><td colspan="4">—</td></tr>`;
       const both = new Set([...r.tech, ...(r.ai || [])]);
-      return `<tr><td>${esc(f.name)}</td><td>${esc(names(r.real))}</td><td>${esc(names(r.tech))}</td><td>${r.ai ? esc(names(both)) : '—'}</td><td>${r.ai ? 'تم' : 'تعذر: ' + esc(r.err.slice(0, 70))}</td></tr>`;
+      return `<tr><td>${esc(f.name)}</td><td>${esc(names(r.real))}</td><td>${esc(names(r.tech))}</td><td>${r.ai ? esc(names(both)) : '—'}</td><td>${r.ai ? 'تم' : 'تعذر: ' + (r.quota ? 'حد الطلبات المجاني' : esc(r.err.slice(0, 60)))}</td></tr>`;
     }).join('');
     const done = files.filter((f) => res[f.name] && res[f.name].ai);
     if (!done.length) { $('#sum').hidden = true; return; }
@@ -94,6 +114,10 @@
       <p class="note">الفئات المحتسبة: جوال، كلمة مرور، بريد، عنوان IP، هوية، موقع جغرافي.</p>`;
   }
 
+  const ss = (k) => { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  $('#ekey').value = ss('mirsad_key'); $('#emodel').value = ss('mirsad_model') || 'gemini-flash-latest';
+  $('#esave').addEventListener('click', () => { try { sessionStorage.setItem('mirsad_key', $('#ekey').value.trim()); sessionStorage.setItem('mirsad_model', $('#emodel').value.trim() || 'gemini-flash-latest'); } catch (e) {} $('#esaved').textContent = '✔ تم الحفظ'; });
+  $('#ereset').addEventListener('click', () => { try { localStorage.removeItem(STORE); } catch (e) {} res = {}; render(); $('#esaved').textContent = 'مُسحت النتائج المحفوظة'; });
   $('#start').addEventListener('click', runPending);
   $('#retry').addEventListener('click', runPending);
   $('#csv').addEventListener('click', () => {

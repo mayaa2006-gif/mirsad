@@ -92,11 +92,29 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
     return c.toDataURL('image/jpeg', 0.9).split(',')[1];
   }
-  async function analyze(img, key) {
+  const MODELS = () => [getModel(), 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'].filter((x, i, arr) => x && arr.indexOf(x) === i);
+  function friendly(msg) {
+    msg = String(msg || '');
+    if (/quota|429|exhaust|rate limit/i.test(msg)) return 'وصل الحد المجاني للطلبات في هذا المفتاح. انتظر قليلًا ثم أعد المحاولة، أو استخدم مفتاحًا من مشروع جديد.';
+    if (/api key not valid|API_KEY_INVALID|permission|403|401/i.test(msg)) return 'المفتاح غير صحيح أو غير مفعّل. تأكد من نسخه كاملًا.';
+    if (/not found|404|not supported/i.test(msg)) return 'اسم النموذج غير صحيح. افتح «إعدادات متقدمة» وغيّره.';
+    if (/Failed to fetch|NetworkError|network/i.test(msg)) return 'تعذر الاتصال بالإنترنت أو بخدمة Gemini.';
+    return msg;
+  }
+  async function callModel(model, img, key) {
     const body = { contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: shrink(img, 1600) } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.1 } };
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(getModel()) + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
     const data = await res.json();
     if (!res.ok) throw new Error((data.error && data.error.message) || ('خطأ ' + res.status));
+    return data;
+  }
+  async function analyze(img, key) {
+    let data, last;
+    for (const m of MODELS()) {
+      try { data = await callModel(m, img, key); break; }
+      catch (e) { last = e; if (!/quota|429|exhaust|not found|404|not supported|unavailable|503|overload/i.test(String(e.message))) throw e; }
+    }
+    if (!data) throw last || new Error('تعذر التحليل');
     let text = data.candidates && data.candidates[0] && data.candidates[0].content.parts.map((p) => p.text || '').join('');
     if (!text) throw new Error('لم يرجع النموذج نتيجة');
     text = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
@@ -153,7 +171,7 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
     let aiHtml;
     if (status === 'pending') aiHtml = '<div class="busy"><div class="spin"></div>الذكاء الاصطناعي يحلل محتوى الصورة...</div>';
     else if (status === 'nokey') aiHtml = '<div class="warnbox">لم تُدخل مفتاح Gemini، فعُرض الفحص التقني فقط. أضف المفتاح من الأعلى لتفعيل الذكاء الاصطناعي.</div>';
-    else if (status.indexOf('error:') === 0) aiHtml = `<div class="warnbox">تعذر الاتصال بـ Gemini: ${esc(status.slice(6))}<br>تأكد من المفتاح واسم النموذج في الإعدادات المتقدمة.</div>`;
+    else if (status.indexOf('error:') === 0) aiHtml = `<div class="warnbox">${esc(friendly(status.slice(6)))}<br>الفحص التقني أعلاه يعمل بدون مفتاح، ويمكنك المتابعة به.</div>`;
     else aiHtml = aiCards(items);
     const atk = ai && (ai.attacker.length || ai.summary) ? `<details class="atkd"><summary>عين المهاجم: اعرض ما يراه المهاجم</summary><ul>${ai.attacker.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><p>${esc(ai.summary)}</p></details>` : '';
     $('#results').innerHTML = `
@@ -186,6 +204,6 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
       box.appendChild(b);
     });
   }
-  window.Mirsad = { readExif, techFindings, run, analyze, getKey };
+  window.Mirsad = { readExif, techFindings, run, analyze, getKey, friendly };
   document.addEventListener('DOMContentLoaded', init);
 })();
