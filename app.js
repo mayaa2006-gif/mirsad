@@ -93,36 +93,76 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
     return c.toDataURL('image/jpeg', 0.9).split(',')[1];
   }
   const MODELS = () => [getModel(), 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'].filter((x, i, arr) => x && arr.indexOf(x) === i);
-  function friendly(msg) {
+  /* وسيط اختياري: إذا وُضع رابطه في config.js يعمل الذكاء الاصطناعي بدون مفتاح من المستخدم */
+  const PROXY = () => String((window.MIRSAD_CONFIG && window.MIRSAD_CONFIG.proxyUrl) || '').trim();
+  const aiReady = () => !!PROXY() || !!getKey();
+  /* كل رسائل الخطأ تظهر بالعربي فقط، ولا يُعرض نص إنجليزي خام للمستخدم. يرجع [سبب مختصر، شرح كامل] */
+  function errParts(msg) {
     msg = String(msg || '');
-    if (/quota|429|exhaust|rate limit/i.test(msg)) return 'وصل الحد المجاني للطلبات في هذا المفتاح. انتظر قليلًا ثم أعد المحاولة، أو استخدم مفتاحًا من مشروع جديد.';
-    if (/api key not valid|API_KEY_INVALID|permission|403|401/i.test(msg)) return 'المفتاح غير صحيح أو غير مفعّل. تأكد من نسخه كاملًا.';
-    if (/not found|404|not supported/i.test(msg)) return 'اسم النموذج غير صحيح. افتح «إعدادات متقدمة» وغيّره.';
-    if (/Failed to fetch|NetworkError|network/i.test(msg)) return 'تعذر الاتصال بالإنترنت أو بخدمة Gemini.';
-    return msg;
+    const px = !!PROXY();
+    if (/quota|429|exhaust|rate.?limit|RESOURCE_EXHAUSTED/i.test(msg)) return ['حد الطلبات المجاني', 'وصل الحد المجاني للطلبات في خدمة Gemini. إن كان الحد في الدقيقة فانتظر دقيقة ثم أعد المحاولة، وإن كان يوميًا فيتجدد بعد منتصف الليل بتوقيت المحيط الهادئ (حوالي الحادية عشرة صباحًا بتوقيت السعودية).' + (px ? '' : ' ويمكنك أيضًا استخدام مفتاح من مشروع جديد، لأن الحد يُحسب على المشروع وليس على المفتاح.')];
+    if (/api key not valid|API_KEY_INVALID|API key expired|PERMISSION_DENIED|permission|\b(401|403)\b/i.test(msg)) return [px ? 'إعداد الخدمة' : 'المفتاح غير صحيح', px ? 'تعذر الوصول إلى Gemini لأن مفتاح الخدمة غير صحيح أو غير مفعّل. أبلغ فريق المشروع بذلك.' : 'المفتاح غير صحيح أو منتهي أو غير مفعّل. تأكد أنك نسخته كاملًا من Google AI Studio.'];
+    if (/not found|\b404\b|not supported/i.test(msg)) return ['اسم النموذج', 'اسم النموذج غير صحيح أو لم يعد متاحًا.' + (px ? '' : ' افتح «إعدادات متقدمة» وغيّره.')];
+    if (/unavailable|overload|\b503\b|\b500\b|internal/i.test(msg)) return ['الخدمة مشغولة', 'خدمة Gemini مشغولة حاليًا. أعد المحاولة بعد لحظات.'];
+    if (/Failed to fetch|NetworkError|network|Load failed|TypeError/i.test(msg)) return ['الاتصال', 'تعذر الاتصال بالإنترنت أو بخدمة الذكاء الاصطناعي. تأكد من اتصالك وأعد المحاولة.'];
+    if (/SAFETY|blocked|PROHIBITED|BLOCK/i.test(msg)) return ['رفض النموذج', 'رفض النموذج تحليل هذه الصورة لأسباب تتعلق بالمحتوى.'];
+    if (/payload|too large|\b413\b|exceeds/i.test(msg)) return ['حجم الصورة', 'حجم الصورة كبير على الخدمة. جرّب صورة أصغر.'];
+    if (/JSON|Unexpected|SyntaxError|position/i.test(msg)) return ['رد غير مكتمل', 'وصل رد غير مكتمل من الذكاء الاصطناعي. أعد المحاولة.'];
+    if (/[؀-ۿ]/.test(msg)) return [msg.slice(0, 60), msg];          // الرسالة عربية أصلًا
+    return ['خطأ غير متوقع', 'حدث خطأ غير متوقع أثناء التحليل. أعد المحاولة بعد قليل، وإن تكرر فالفحص التقني يعمل بدون الذكاء الاصطناعي.'];
   }
-  async function callModel(model, img, key) {
-    const body = { contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: shrink(img, 1600) } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.1 } };
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
-    const data = await res.json();
+  const friendly = (msg) => errParts(msg)[1];
+  const reason = (msg) => errParts(msg)[0];
+  async function callModel(model, parts, key) {
+    const body = { contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.1 } };
+    const res = PROXY()
+      ? await fetch(PROXY(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, body }) })
+      : await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error((data.error && data.error.message) || ('خطأ ' + res.status));
     return data;
   }
-  async function analyze(img, key) {
+  /* يرسل الطلب ويجرّب النماذج البديلة، ويرجع JSON جاهزًا */
+  async function generate(parts, key) {
     let data, last;
     for (const m of MODELS()) {
-      try { data = await callModel(m, img, key); break; }
+      try { data = await callModel(m, parts, key); break; }
       catch (e) { last = e; if (!/quota|429|exhaust|not found|404|not supported|unavailable|503|overload/i.test(String(e.message))) throw e; }
     }
     if (!data) throw last || new Error('تعذر التحليل');
-    let text = data.candidates && data.candidates[0] && data.candidates[0].content.parts.map((p) => p.text || '').join('');
+    let text = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts.map((p) => p.text || '').join('');
     if (!text) throw new Error('لم يرجع النموذج نتيجة');
-    text = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-    const j = JSON.parse(text);
+    text = text.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '').trim();
+    return JSON.parse(text);
+  }
+  function normalize(j) {
+    j = j || {};
     const items = (Array.isArray(j.items) ? j.items : []).map((i) => ({
       category: CAT[i.category] ? i.category : 'other', text_seen: i.text_seen || '', severity: SEV[i.severity] ? i.severity : 'low', why_ar: i.why_ar || '',
       box: Array.isArray(i.box_2d) && i.box_2d.length === 4 && i.box_2d.every((n) => typeof n === 'number' && n >= 0 && n <= 1000) ? i.box_2d : null }));
     return { items, attacker: Array.isArray(j.attacker_view_ar) ? j.attacker_view_ar : [], summary: j.summary_ar || '' };
+  }
+  async function analyze(img, key) {
+    return normalize(await generate([{ text: PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: shrink(img, 1600) } }], key));
+  }
+  /* عدة صور في طلب واحد: يوفّر عدد الطلبات (مهم للحد المجاني). يرجع مصفوفة بنفس ترتيب الصور. */
+  const PROMPT_MULTI = `You are a privacy and cybersecurity analyst.
+Task: for EACH numbered image below, find sensitive information that is VISIBLE in it.
+Report only what you can actually see. Do not guess. Never mix findings between images. If nothing sensitive is visible in an image, return an empty items list for it.
+Categories allowed: phone_number, password, email, ip_address, national_id, address_or_location, logo_or_badge, license_plate, person_name, other.
+Output: JSON only, exactly this shape, with exactly one entry per image:
+{"results":[{"image":1,"items":[{"category":"...","text_seen":"the exact text or a short description","severity":"high|medium|low","why_ar":"one short Arabic sentence","box_2d":[ymin,xmin,ymax,xmax] or null}],"attacker_view_ar":["short Arabic sentences"],"summary_ar":"one Arabic sentence"}]}
+"image" is the image number given before each image. box_2d uses coordinates normalized from 0 to 1000 relative to that image.
+Never include precise coordinates of real places.`;
+  async function analyzeMany(imgs, key) {
+    const parts = [{ text: PROMPT_MULTI }];
+    imgs.forEach((img, i) => { parts.push({ text: 'Image ' + (i + 1) + ':' }); parts.push({ inline_data: { mime_type: 'image/jpeg', data: shrink(img, 1280) } }); });
+    const j = await generate(parts, key);
+    const list = Array.isArray(j.results) ? j.results : [];
+    return imgs.map((_, i) => {
+      const r = list.find((x) => Number(x && x.image) === i + 1) || (list.length === imgs.length ? list[i] : null);
+      return r ? normalize(r) : null;   // null = الصورة لم ترجع في الرد
+    });
   }
 
   /* ---------- التنظيف والتغطية ---------- */
@@ -154,8 +194,8 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
     await new Promise((ok, no) => { img.onload = ok; img.onerror = () => no(new Error('تعذر قراءة الصورة')); img.src = url; }).catch((e) => { results.innerHTML = `<div class="warnbox">${esc(e.message)}. استخدم صورة JPG أو PNG.</div>`; throw e; });
     const key = getKey();
     const token = (current = {});
-    draw(tech, null, key ? 'pending' : 'nokey', img, url);
-    if (!key) return;
+    draw(tech, null, aiReady() ? 'pending' : 'nokey', img, url);
+    if (!aiReady()) return;
     try {
       const ai = await analyze(img, key);
       if (current === token) draw(tech, ai, 'ok', img, url);
@@ -188,6 +228,7 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
 
   /* ---------- الواجهة ---------- */
   function init() {
+    if (PROXY()) { document.querySelectorAll('.needkey').forEach((e) => { e.style.display = 'none'; }); document.querySelectorAll('.proxyonly').forEach((e) => { e.hidden = false; }); }
     const input = $('#file'), drop = $('#drop');
     if (!input) return;
     input.addEventListener('change', () => { if (input.files[0]) run(input.files[0]).catch(() => {}); });
@@ -204,6 +245,6 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
       box.appendChild(b);
     });
   }
-  window.Mirsad = { readExif, techFindings, run, analyze, getKey, friendly };
+  window.Mirsad = { readExif, techFindings, run, analyze, analyzeMany, getKey, aiReady, friendly, reason };
   document.addEventListener('DOMContentLoaded', init);
 })();
