@@ -21,7 +21,7 @@
     truth = null; res = {};
     if (gt) { try { truth = JSON.parse(await gt.text()); } catch (x) { truth = null; } }
     const ok = files.length && truth;
-    $('#info').innerHTML = ok ? `✔ ${files.length} صورة + ملف الإجابات جاهزة.` : '<span style="color:var(--bad)">لازم تختارين الصور وملف ground_truth.json معًا.</span>';
+    $('#info').innerHTML = ok ? `✔ ${files.length} صورة + ملف الإجابات جاهزة.` : '<span style="color:var(--bad)">لازم تختار الصور وملف ground_truth.json معًا.</span>';
     $('#start').disabled = !ok; render();
   });
 
@@ -102,7 +102,7 @@
 
   async function runPending() {
     if (busy) return;
-    if (!window.Mirsad.aiReady()) { $('#info').innerHTML = '<span style="color:var(--bad)">أدخلي مفتاح Gemini في الخانة أعلاه واضغطي «حفظ» أولًا.</span>'; return; }
+    if (!window.Mirsad.aiReady()) { $('#info').innerHTML = '<span style="color:var(--bad)">أدخل مفتاح Gemini في الخانة أعلاه واضغط «حفظ» أولًا.</span>'; return; }
     busy = true; $('#start').disabled = true; $('#retry').hidden = true;
     const stored = loadStore();
     for (const f of files) { if (stored[f.name] && !(res[f.name] && res[f.name].ai)) res[f.name] = await entry(f, new Set(stored[f.name])); }
@@ -147,14 +147,14 @@
       <tr><td><b>دقة النتائج</b></td><td>${a.pre}%</td><td>${b.pre}%</td></tr>
       <tr><td><b>إنذارات كاذبة</b></td><td>${a.fp}</td><td>${b.fp}</td></tr>
       <tr><td><b>صور كُشفت بياناتها كاملة</b></td><td>${fullT} من ${done.length}</td><td>${fullB} من ${done.length}</td></tr></table>
-      <p class="note">الأرقام محسوبة على ${done.length} صورة من ${files.length}${skipped ? ` (تعذر تحليل ${skipped}، ولم تدخل في الحساب. أعيدي المحاولة لإكمالها)` : ''}.</p>
+      <p class="note">الأرقام محسوبة على ${done.length} صورة من ${files.length}${skipped ? ` (تعذر تحليل ${skipped}، ولم تدخل في الحساب. أعد المحاولة لإكمالها)` : ''}.</p>
       <p class="note">الفئات المحتسبة: جوال، كلمة مرور، بريد، عنوان IP، هوية، موقع جغرافي.</p>`;
   }
 
   const ss = (k) => { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } };
   $('#ekey').value = ss('mirsad_key'); $('#emodel').value = ss('mirsad_model') || 'gemini-flash-latest';
   $('#esave').addEventListener('click', () => { try { sessionStorage.setItem('mirsad_key', $('#ekey').value.trim()); sessionStorage.setItem('mirsad_model', $('#emodel').value.trim() || 'gemini-flash-latest'); } catch (e) {} $('#esaved').textContent = '✔ تم الحفظ'; });
-  $('#ereset').addEventListener('click', () => { try { localStorage.removeItem(STORE); } catch (e) {} res = {}; render(); $('#esaved').textContent = 'مُسحت النتائج المحفوظة'; });
+  $('#ereset').addEventListener('click', (ev) => { ev.preventDefault(); try { localStorage.removeItem(STORE); } catch (e) {} res = {}; render(); $('#esaved').textContent = 'مُسحت النتائج المحفوظة'; });
   $('#start').addEventListener('click', runPending);
   $('#retry').addEventListener('click', runPending);
   $('#csv').addEventListener('click', () => {
