@@ -100,6 +100,13 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
   function errParts(msg) {
     msg = String(msg || '');
     const px = !!PROXY();
+    const m0 = msg.match(/^\[(\d{3})\]\s*/); const code = m0 ? m0[1] : ''; if (m0) msg = msg.slice(m0[0].length);
+    /* رسائل الوسيط (Cloudflare) وأخطاء الموقع الجغرافي: تُفحص أولًا */
+    if (/origin not allowed/i.test(msg)) return ['عنوان الموقع غير مسموح', 'الوسيط يرفض الطلب لأن عنوان الموقع لا يطابق المكتوب في متغير ALLOWED_ORIGIN في Cloudflare. تأكد أنه مطابق تمامًا لعنوان موقعك بدون / في الآخر، مثل https://اسمك.github.io'];
+    if (/server key is missing/i.test(msg)) return ['المفتاح غير مضاف في الوسيط', 'مفتاح Gemini غير موجود في إعدادات الوسيط. أضف المتغير GEMINI_API_KEY (من نوع Secret) في Cloudflare ثم اضغط Deploy.'];
+    if (/invalid (model|body|json)|method not allowed/i.test(msg)) return ['طلب غير صالح', 'رفض الوسيط الطلب لأن صيغته غير صحيحة. تأكد أنك رفعت كل ملفات النسخة الأخيرة من الموقع.'];
+    if (/location is not supported|not supported for the API use/i.test(msg)) return ['منطقة الخادم', 'خدمة Gemini لا تدعم المنطقة التي يعمل منها الوسيط حاليًا. أعد المحاولة بعد قليل، وإن تكرر فأبلغ فريق المشروع.'];
+    if (/reported as leaked|leaked/i.test(msg)) return ['المفتاح مكشوف', 'عطّلت Google هذا المفتاح لأنه ظهر علنًا. أنشئ مفتاحًا جديدًا من مشروع جديد وضعه في Cloudflare.'];
     if (/quota|429|exhaust|rate.?limit|RESOURCE_EXHAUSTED/i.test(msg)) return ['حد الطلبات المجاني', 'وصل الحد المجاني للطلبات في خدمة Gemini. إن كان الحد في الدقيقة فانتظر دقيقة ثم أعد المحاولة، وإن كان يوميًا فيتجدد بعد منتصف الليل بتوقيت المحيط الهادئ (حوالي الحادية عشرة صباحًا بتوقيت السعودية).' + (px ? '' : ' ويمكنك أيضًا استخدام مفتاح من مشروع جديد، لأن الحد يُحسب على المشروع وليس على المفتاح.')];
     if (/api key not valid|API_KEY_INVALID|API key expired|PERMISSION_DENIED|permission|\b(401|403)\b/i.test(msg)) return [px ? 'إعداد الخدمة' : 'المفتاح غير صحيح', px ? 'تعذر الوصول إلى Gemini لأن مفتاح الخدمة غير صحيح أو غير مفعّل. أبلغ فريق المشروع بذلك.' : 'المفتاح غير صحيح أو منتهي أو غير مفعّل. تأكد أنك نسخته كاملًا من Google AI Studio.'];
     if (/not found|\b404\b|not supported/i.test(msg)) return ['اسم النموذج', 'اسم النموذج غير صحيح أو لم يعد متاحًا.' + (px ? '' : ' افتح «إعدادات متقدمة» وغيّره.')];
@@ -109,7 +116,7 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
     if (/payload|too large|\b413\b|exceeds/i.test(msg)) return ['حجم الصورة', 'حجم الصورة كبير على الخدمة. جرّب صورة أصغر.'];
     if (/JSON|Unexpected|SyntaxError|position/i.test(msg)) return ['رد غير مكتمل', 'وصل رد غير مكتمل من الذكاء الاصطناعي. أعد المحاولة.'];
     if (/[؀-ۿ]/.test(msg)) return [msg.slice(0, 60), msg];          // الرسالة عربية أصلًا
-    return ['خطأ غير متوقع', 'حدث خطأ غير متوقع أثناء التحليل. أعد المحاولة بعد قليل، وإن تكرر فالفحص التقني يعمل بدون الذكاء الاصطناعي.'];
+    return ['خطأ غير متوقع' + (code ? ' (' + code + ')' : ''), 'حدث خطأ غير متوقع أثناء التحليل' + (code ? ' (رمز الخطأ ' + code + ')' : '') + '. أعد المحاولة بعد قليل، وإن تكرر فالفحص التقني يعمل بدون الذكاء الاصطناعي.'];
   }
   const friendly = (msg) => errParts(msg)[1];
   const reason = (msg) => errParts(msg)[0];
@@ -119,7 +126,7 @@ Constraints: Arabic text must be simple, gender-neutral and short. Never include
       ? await fetch(PROXY(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, body }) })
       : await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error((data.error && data.error.message) || ('خطأ ' + res.status));
+    if (!res.ok) throw new Error('[' + res.status + '] ' + ((data.error && data.error.message) || ('خطأ ' + res.status)));
     return data;
   }
   /* يرسل الطلب ويجرّب النماذج البديلة، ويرجع JSON جاهزًا */
